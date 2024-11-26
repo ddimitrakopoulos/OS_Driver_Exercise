@@ -18,4 +18,8 @@ lunix-protocol.h ---> header file for lunix-protocol.c
 
 lunix-sensors.c ---> has function to initialize update and delete sensors
 
+lunix-tcp.sh --->
+
+mk-lunix-devs.sh --->
+
 mk-lunix-lookup.c ---> has function to convert the info we got from sensors into battery/temperature/light
