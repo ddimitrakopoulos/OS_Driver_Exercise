@@ -10,7 +10,7 @@ lunix-chrdev.h ---> header file for lunix-chrdev.c
 
 lunix-ldisc.h ---> 
 
-lunix-module.c --->
+lunix-module.c ---> initialization, clean up and managment of sensors, line discipline, and character device components
 
 lunix-protocol.c ---> proccess data packets (includes debugging options)
 
