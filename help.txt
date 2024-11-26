@@ -12,7 +12,7 @@ lunix-ldisc.h --->
 
 lunix-module.c --->
 
-lunix-protocol.c --->
+lunix-protocol.c ---> proccess data packets (includes debugging options)
 
 lunix-protocol.h ---> header file for lunix-protocol.c
 
