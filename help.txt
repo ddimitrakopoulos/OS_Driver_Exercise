@@ -8,7 +8,7 @@ lunix-chrdev.c --->
 
 lunix-chrdev.h ---> header file for lunix-chrdev.c
 
-lunix-ldisc.h ---> 
+lunix-ldisc.h ---> The lunix-ldisc.c file implements a custom TTY line discipline for the Lunix:TNG kernel module. A line discipline acts as an intermediary between the TTY driver and higher-level applications or protocols, enabling data processing for serial devices.
 
 lunix-module.c ---> initialization, clean up and managment of sensors, line discipline, and character device components
 
