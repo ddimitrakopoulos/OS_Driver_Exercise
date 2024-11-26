@@ -18,7 +18,8 @@ lunix-protocol.h ---> header file for lunix-protocol.c
 
 lunix-sensors.c ---> has function to initialize update and delete sensors
 
-lunix-tcp.sh --->
+lunix-tcp.sh ---> usage: ./lunix-tcp.sh dir/to/send/data 
+This Bash script connects to a TCP server (lunix.cslab.ece.ntua.gr:49152) and forwards incoming data to a specified pseudo-terminal slave (PTS) port using the socat utility. It verifies that exactly one argument (the PTS port) is provided and checks if socat is installed. If either condition fails, it exits with an error message. When run successfully, it uses socat in unidirectional mode to forward the TCP data to the given PTS device.
 
 mk-lunix-devs.sh --->
 
