@@ -1,8 +1,8 @@
 Help for understanding the files
 
-lunix.h ---> 
+lunix.h ---> header file
 
-lunix.attach.c ---> 
+lunix.attach.c ---> communication between tty and kernal
 
 lunix-chrdev.c --->
 
