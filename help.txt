@@ -2,6 +2,8 @@ Help for understanding the files
 
 lunix.h ---> header file
 
+lunix.mod.c ---> sets up metadata, symbol info, core sectors(init and cleanup) and other info. Basically informs kernel for smooth running  
+
 lunix.attach.c ---> communication between tty and kernal
 
 lunix-chrdev.c --->
