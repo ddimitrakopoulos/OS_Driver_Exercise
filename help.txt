@@ -32,24 +32,67 @@ lunix.attach.c ---> communication between tty and kernal
 
     static int tty_close(void): Sets to old disclipine line and restores state.
 
+    static int tty_open(char *name): Creates file for tty input and prints its fd and also creates lock file.
     
+**lunix-chrdev.c ---> Shows sensor data in files of proper format in userspace.
 
+    static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state): Checks if sensor data need refresh.
 
-    
+    static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state): Updates device state.
 
-lunix-chrdev.c --->
+    static int lunix_chrdev_open(struct inode *inode, struct file *filp):Takes file(buffers made before) and associates it with a sensor using the inode.
+
+    static int lunix_chrdev_release(struct inode *inode, struct file *filp): Erases data from sensor file.
+
+    static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t cnt, loff_t *f_pos): Copies data to userspace.
+
+    int lunix_chrdev_init(void): Initializes cdev and registers it with the kernel
+
+    void lunix_chrdev_destroy(void)** 
 
 lunix-chrdev.h ---> header file for lunix-chrdev.c
 
-lunix-ldisc.h ---> The lunix-ldisc.c file implements a custom TTY line discipline for the Lunix:TNG kernel module. A line discipline acts as an intermediary between the TTY driver and higher-level applications or protocols, enabling data processing for serial devices.
+lunix-ldisc.h --> header file for lunix-ldisc.c
+
+lunix-ldisc.c ---> The lunix-ldisc.c file implements a custom TTY line discipline for the Lunix:TNG kernel module. A line discipline acts as an intermediary between the TTY driver and higher-level applications or protocols, enabling data processing for serial devices.
+
+    static int lunix_ldisc_open(struct tty_struct *tty): Checks if line discipline is busy and then allocates space for the tty.
+
+    static void lunix_ldisc_close(struct tty_struct *tty): Sets lunix_disc_available to 1 and so locks the the line.
+
+    static void lunix_ldisc_receive_buf(struct tty_struct *tty,const unsigned char *cp,const unsigned char *fp, size_t count): Get the new sensor data.
+
+    int lunix_ldisc_init(void): Initializes ldisc to kernel start with lunix_disc_available = 1.
+
+    void lunix_ldisc_destroy(void): Self explainatory.
 
 lunix-module.c ---> initialization, clean up and managment of sensors, line discipline, and character device components
 
 lunix-protocol.c ---> proccess data packets (includes debugging options)
 
-lunix-protocol.h ---> header file for lunix-protocol.c
+    static uint16_t uint16_from_packet(unsigned char *p): Packet to 16bit int. So as to avoid architecture compatibility issues.
+
+    static inline void lunix_protocol_show_packet(struct lunix_protocol_state_struct *state): Prints recieved packet.
+
+    static void lunix_protocol_update_sensors(struct lunix_protocol_state_struct *state,struct lunix_sensor_struct *lunix_sensors): Update sensor values.
+
+    static inline void set_state(struct lunix_protocol_state_struct *statep,int state, int btr, int br): Sets state in struct.
+
+    void lunix_protocol_init(struct lunix_protocol_state_struct *state): Initializes struct lunix_protocol_state_struct. 
+
+    static int lunix_protocol_parse_state(struct lunix_protocol_state_struct *state,const unsigned char *data, int length,int *i, int use_specials): Loads packet data to current state struct, also treats some special chars.
+
+    int lunix_protocol_received_buf(struct lunix_protocol_state_struct *state,const unsigned char *buf, int length): Uptdates protocol machine(and data).
+
+lunix-protocol.h ---> header file for lunix-protocol.c, contains state struct.
 
 lunix-sensors.c ---> has function to initialize update and delete sensors
+    int lunix_sensor_init(struct lunix_sensor_struct *s): Initializes lunix_sensor_struct struct.
+
+    void lunix_sensor_destroy(struct lunix_sensor_struct *s): Deletes msr_data[] of struct.
+
+    void lunix_sensor_update(struct lunix_sensor_struct *s,uint16_t batt, uint16_t temp, uint16_t light): Gets sensor's new data, wakes up every proccess waiting.
+    
 
 lunix-tcp.sh ---> usage: ./lunix-tcp.sh dir/to/send/data 
 This Bash script connects to a TCP server (lunix.cslab.ece.ntua.gr:49152) and forwards incoming data to a specified pseudo-terminal slave (PTS) port using the socat utility. It verifies that exactly one argument (the PTS port) is provided and checks if socat is installed. If either condition fails, it exits with an error message. When run successfully, it uses socat in unidirectional mode to forward the TCP data to the given PTS device.
