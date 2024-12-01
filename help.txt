@@ -34,7 +34,7 @@ lunix.attach.c ---> communication between tty and kernal
 
     static int tty_open(char *name): Creates file for tty input and prints its fd and also creates lock file.
     
-**lunix-chrdev.c ---> Shows sensor data in files of proper format in userspace.
+**lunix-chrdev.c ---> Shows sensor data in files of proper format in userspace.**
 
     static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state): Checks if sensor data need refresh.
 
