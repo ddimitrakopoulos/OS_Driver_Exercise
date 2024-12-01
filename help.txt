@@ -6,6 +6,37 @@ lunix.mod.c ---> sets up metadata, symbol info, core sectors(init and cleanup) a
 
 lunix.attach.c ---> communication between tty and kernal
 
+    static int tty_already_locked(char *nam): If file is locked return 0, else 1.
+
+    static int tty_lock(char *path, int mode): if mode == 1, creates tty_lock file which contains proccess pid and is owned by user and saves to          /var/lock/LCK../path. Else delete a tty_lock at file.
+
+    static int tty_find_speed(const char *speed): Self explainatory
+
+    static int tty_set_stopbits(struct termios *tty, char *stopbits)
+    static int tty_set_databits(struct termios *tty, char *databits)
+    static int tty_set_parity(struct termios *tty, char *parity): Those three set the format of the input of the serial port
+
+    static int tty_set_speed(struct termios *tty, const char *speed):  Self explainatory
+
+    static int tty_set_raw(struct termios *tty): Initialization of line 
+
+    static int tty_get_state(struct termios *tty): Gets state of tty terminal 
+
+    static int tty_set_state(struct termios *tty): Sets state of tty terminal 
+
+    static int tty_get_ldisc(int *disc): Gets current line disclipine int to location where disc points.
+
+    static int tty_set_ldisc(int disc): Sets line disclipine int to disc.
+
+    static int tty_restore(void): Restores to previous state(only speed and stuff).
+
+    static int tty_close(void): Sets to old disclipine line and restores state.
+
+    
+
+
+    
+
 lunix-chrdev.c --->
 
 lunix-chrdev.h ---> header file for lunix-chrdev.c
