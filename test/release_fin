@@ -1,0 +1,5 @@
+static int lunix_chrdev_release(struct inode *inode, struct file *filp)
+{
+	kfree(flip->private_data);//private data points to each state so probably works	
+	return 0;
+}
