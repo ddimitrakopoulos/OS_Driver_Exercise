@@ -1,0 +1,31 @@
+static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
+{
+	struct lunix_sensor_struct *sensor;
+	
+	debug("leaving\n");
+
+	/*
+	 * Grab the raw data quickly, hold the
+	 * spinlock for as little as possible.
+	 */
+	spin_lock(&sensor->lock);
+
+	/*
+	 * Any new data available?
+	 */
+	if(lunix_chrdev_state_needs_refresh(state))
+	{
+		/*Update buf_data by loading the data of 1 sensor*/
+		state->buf_data = sensor->msr_data[state->type]->values;
+		state->buf_timestamp = ktime_get_real_seconds();
+	}
+	spin_unlock(&sensor->lock);
+	/*
+	 * Now we can take our time to format them,
+	 * holding only the private state semaphore
+	 */
+
+
+	debug("leaving\n");
+	return 0;
+}
