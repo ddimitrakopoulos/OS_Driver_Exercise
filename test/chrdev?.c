@@ -168,65 +168,73 @@ static long lunix_chrdev_ioctl(struct file *filp, unsigned int cmd, unsigned lon
 
 static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t cnt, loff_t *f_pos)
 {
-	ssize_t ret = 0;
+    struct lunix_chrdev_state_struct *state;
+    struct lunix_sensor_struct *sensor;
+    ssize_t ret;
+    size_t remaining_bytes, bytes_to_copy;
 
-	struct lunix_chrdev_state_struct *chrdev_state  = filp->private_data;
-	WARN_ON(!chrdev_state);
+    debug("entering\n");
 
-	struct lunix_sensor_struct *sensor = chrdev_state->sensor;
-	WARN_ON(!sensor);
+    /* Retrieve the device state */
+    state = filp->private_data;
+    WARN_ON(!state);
 
-	debug("entering\n");
+    /* Retrieve the associated sensor */
+    sensor = state->sensor;
+    WARN_ON(!sensor);
 
-	/* Acquire the lock */
-	if (down_interruptible(&chrdev_state->lock))
-		return -ERESTARTSYS;
+    /* Acquire semaphore to ensure exclusive access */
+    if (down_interruptible(&state->lock))
+        return -ERESTARTSYS;
 
-	/* Update cached state if required */
-	if (*f_pos == 0) {
-		while (lunix_chrdev_state_update(chrdev_state) == -EAGAIN) {
-			up(&chrdev_state->lock);  // Release lock while sleeping
+    /* Check if cached state needs updating */
+    if (*f_pos == 0) {
+        while (lunix_chrdev_state_update(state) == -EAGAIN) {
+            /* Release lock while sleeping */
+            up(&state->lock);
 
-			if (chrdev_state->nonblock_mode)
-				return -EAGAIN;
+            /* Handle non-blocking mode */
+            if (filp->f_flags & O_NONBLOCK)
+                return -EAGAIN;
 
-			if (wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(chrdev_state)))
-				return -ERESTARTSYS;
+            /* Wait for sensor data to become available */
+            if (wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state)))
+                return -ERESTARTSYS;
 
-			/* Reacquire the lock */
-			if (down_interruptible(&chrdev_state->lock))
-				return -ERESTARTSYS;
-		}
-	}
+            /* Reacquire the lock */
+            if (down_interruptible(&state->lock))
+                return -ERESTARTSYS;
+        }
+    }
 
-	/* Calculate bytes to read */
-	size_t remaining_bytes = chrdev_state->buf_lim - *f_pos;
-	size_t to_copy = min(cnt, remaining_bytes);
+    /* Calculate bytes available to read */
+    remaining_bytes = state->buf_lim - *f_pos;
+    bytes_to_copy = min(cnt, remaining_bytes);
 
-	if (!to_copy) {  // EOF case
-		ret = 0;
-		goto out;
-	}
+    if (!bytes_to_copy) { /* End of file */
+        ret = 0;
+        goto out;
+    }
 
-	/* Copy data to user-space */
-	if (copy_to_user(usrbuf, chrdev_state->buf_data + *f_pos, to_copy)) {
-		ret = -EFAULT;
-		goto out;
-	}
+    /* Copy data from the buffer to user space */
+    if (copy_to_user(usrbuf, state->buf_data + *f_pos, bytes_to_copy)) {
+        ret = -EFAULT;
+        goto out;
+    }
 
-	/* Update file offset */
-	*f_pos += to_copy;
-	ret = to_copy;
+    /* Update file position and return number of bytes read */
+    *f_pos += bytes_to_copy;
+    ret = bytes_to_copy;
 
-	/* Auto-rewind on EOF */
-	if (*f_pos == chrdev_state->buf_lim)
-		*f_pos = 0;
+    /* Handle auto-rewind on EOF */
+    if (*f_pos == state->buf_lim)
+        *f_pos = 0;
 
 out:
-	/* Release lock */
-	up(&chrdev_state->lock);
-	debug("leaving\n");
-	return ret;
+    /* Release the semaphore */
+    up(&state->lock);
+    debug("leaving\n");
+    return ret;
 }
 
 
