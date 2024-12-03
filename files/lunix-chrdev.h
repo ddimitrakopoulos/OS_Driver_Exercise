@@ -9,6 +9,7 @@
 
 #ifndef _LUNIX_CHRDEV_H
 #define _LUNIX_CHRDEV_H
+#define buf_lim = 0
 
 /*
  * Lunix:TNG character device
