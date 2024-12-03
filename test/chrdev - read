@@ -89,17 +89,17 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 		if(state->type == 0)
 		{
 			raw_data = lookup_voltage[raw_data];
-			 snprintf(state->buf_data,20,"%.3d",raw_data);
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
 		}
 		if(state->type == 1)
 		{
 			raw_data = lookup_temperature[raw_data];
-			 snprintf(state->buf_data,20,"%.3d",raw_data);
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
 		}
 		if(state->type == 2)
 		{
 			raw_data = lookup_light[raw_data];
-			 snprintf(state->buf_data,20,"%.3d",raw_data);
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
 		}
 	}
 
@@ -142,7 +142,7 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	state->type = min_num;	
 	
 	state->buf_timestamp = 0;
-
+	state->buf_lim = 0;
 	memset(&state->buf_data,0,20);
 
 	sema_init(&state->lock,1);
@@ -241,9 +241,6 @@ int lunix_chrdev_init(void)
 	int ret;
 	dev_t dev_no;
 	unsigned int lunix_minor_cnt = lunix_sensor_cnt << 3;
-	/*Initialize stuff*/
-	//spin_lock_init(&s->lock);
-	//init_waitqueue_head(&s->wq);
 
 	debug("initializing character device\n");
 	cdev_init(&lunix_chrdev_cdev, &lunix_chrdev_fops);
