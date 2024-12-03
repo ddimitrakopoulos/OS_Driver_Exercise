@@ -66,6 +66,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	unsigned long flags;
 	struct lunix_sensor_struct *sensor;
 	uint16_t raw_data;
+	float formated_data;
 	debug("leaving\n");
 	sensor = state->sensor;
 	/*
@@ -88,20 +89,23 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	{
 		if(state->type == 0)
 		{
-			raw_data = lookup_voltage[raw_data];
-			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
+			formated_data = lookup_voltage[raw_data];
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",formated_data);
 		}
 		if(state->type == 1)
 		{
-			raw_data = lookup_temperature[raw_data];
-			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
+			formated_data = lookup_temperature[raw_data];
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",formated_data);
 		}
 		if(state->type == 2)
 		{
-			raw_data = lookup_light[raw_data];
-			state->buf_lim = snprintf(state->buf_data,20,"%.3f",raw_data);
+			formated_data = lookup_light[raw_data];
+			state->buf_lim = snprintf(state->buf_data,20,"%.3f",formated_data);
 		}
 	}
+	else
+	{
+		return -EAGAIN;
 
 	debug("leaving\n");
 	return 0;
@@ -169,7 +173,7 @@ static long lunix_chrdev_ioctl(struct file *filp, unsigned int cmd, unsigned lon
 static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t cnt, loff_t *f_pos)
 {
 	ssize_t ret;
-
+	
 	struct lunix_sensor_struct *sensor;
 	struct lunix_chrdev_state_struct *state;
 
@@ -179,39 +183,66 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	sensor = state->sensor;
 	WARN_ON(!sensor);
 
-	/* Lock? */
+	if(down_interruptible(&state->lock))
+	{
+		return -EAGAIN;
+	}
 	/*
 	 * If the cached character device state needs to be
 	 * updated by actual sensor data (i.e. we need to report
 	 * on a "fresh" measurement, do so
 	 */
-	if (*f_pos == 0) {
-		while (lunix_chrdev_state_update(state) == -EAGAIN) {
-			/* ? */
-			/* The process needs to sleep */
-			/* See LDD3, page 153 for a hint */
-		}
-	}
-
-	/* End of file */
-	/* ? */
 	
-	/* Determine the number of cached bytes to copy to userspace */
-	/* ? */
+	if(*f_pos == 0) {
+		while (lunix_chrdev_state_update(state) == -EAGAIN) {
+			up(&state->lock); //Since u sleep others take your stuff
+			debug("Time for my beauty sleep");		
+			/* The process needs to sleep */
+			if(wait_event_interruptible(sensor->wq, chrdev_state_needs_refresh(state)))
+			{
+				return -EAGAIN;
+			}	
+			if(down_interruptible(&state->lock))
+			{
+				return -EAGAIN;
+			}
+		}
+		cnt = min(cnt,state->buf_lim);//bytes to copy to user
 
+	}
+	else
+	{
+		cnt = min(cnt,state->buf_lim - *f_pos);
+	}
+	/* End of file */
+	ret = cnt - *f_pos;
+
+	if(copy_to_user(usrbuf,state->buf_data + *f_pos,cnt))
+	{
+		up(&state->lock);
+		ret = -EFAULT;
+		goto out;
+	}
 	/* Auto-rewind on EOF mode? */
-	/* ? */
-
+	if(cnt == state->buf_lim)
+	{
+		*f_pos = 0;
+		goto out;
+	}
+	else
+	{       	
+		*f_pos = *f_pos + cnt;
+	}
 	/*
 	 * The next two lines  are just meant to suppress a compiler warning
 	 * for the "unused" out: label, and for the uninitialized "ret" value.
 	 * It's true, this helpcode is a stub, and doesn't use them properly.
 	 * Remove them when you've started working on this code.
 	 */
-	ret = -ENODEV;
-	goto out;
 out:
-	/* Unlock? */
+	up(&state->lock);
+	wake_up_interruptible(&sensor->wq);
+	debug("%d out with bytes %li\n", state->type, (long)cnt);
 	return ret;
 }
 
@@ -281,3 +312,5 @@ void lunix_chrdev_destroy(void)
 	unregister_chrdev_region(dev_no, lunix_minor_cnt);
 	debug("leaving\n");
 }
+
+	
