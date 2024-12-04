@@ -1,0 +1,234 @@
+/*
+ * lunix-chrdev.c
+ *
+ * Implementation of character devices
+ * for Lunix:TNG
+ *
+ * Updated for Linux Kernel 6.11
+ *
+ * Vangelis Koukis <vkoukis@cslab.ece.ntua.gr>
+ */
+
+#include <linux/mm.h>
+#include <linux/fs.h>
+#include <linux/init.h>
+#include <linux/list.h>
+#include <linux/cdev.h>
+#include <linux/poll.h>
+#include <linux/slab.h>
+#include <linux/sched.h>
+#include <linux/ioctl.h>
+#include <linux/types.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/mutex.h>
+#include <linux/uaccess.h>
+#include <linux/wait.h>
+#include <linux/vmalloc.h>
+#include <linux/atomic.h>
+
+#include "lunix.h"
+#include "lunix-chrdev.h"
+#include "lunix-lookup.h"
+
+/*
+ * Global data
+ */
+static struct cdev lunix_chrdev_cdev;
+
+/*
+ * Just a quick [unlocked] check to see if the cached
+ * chrdev state needs to be updated from sensor measurements.
+ */
+static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *chrdev_state)
+{
+    struct lunix_sensor_struct *sensor;
+
+    WARN_ON(!(sensor = chrdev_state->sensor));
+
+    return sensor->msr_data[chrdev_state->type]->last_update > chrdev_state->buf_timestamp;
+}
+
+/*
+ * Updates the cached state of a character device
+ * based on sensor data. Must be called with the
+ * character device state lock held.
+ */
+static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *chrdev_state)
+{
+    struct lunix_sensor_struct *sensor;
+    uint32_t raw_data, current_timestamp;
+    long measurement;
+    unsigned char sign;
+
+    WARN_ON(!(sensor = chrdev_state->sensor));
+
+    /* Check if the state needs refreshing */
+    if (!lunix_chrdev_state_needs_refresh(chrdev_state)) {
+        return -EAGAIN;
+    }
+
+    /* Update state using sensor data */
+    spin_lock_irq(&sensor->lock);
+    raw_data = sensor->msr_data[chrdev_state->type]->values[0];
+    current_timestamp = sensor->msr_data[chrdev_state->type]->last_update;
+    spin_unlock_irq(&sensor->lock);
+
+    /* Format the data */
+    if (!atomic_read(&chrdev_state->raw_mode)) {
+        /* Cooked mode */
+        switch (chrdev_state->type) {
+        case BATT:
+            measurement = lookup_voltage[raw_data];
+            break;
+        case TEMP:
+            measurement = lookup_temperature[raw_data];
+            break;
+        case LIGHT:
+            measurement = lookup_light[raw_data];
+            break;
+        default:
+            return -EINVAL;
+        }
+
+        sign = (measurement >= 0) ? ' ' : '-';
+        measurement = (measurement >= 0) ? measurement : -measurement;
+
+        chrdev_state->buf_lim = snprintf(chrdev_state->buf_data, LUNIX_CHRDEV_BUFSZ, " %c%ld.%03ld\n",
+                                         sign, measurement / 1000, measurement % 1000);
+    } else {
+        /* Raw mode */
+        chrdev_state->buf_lim = snprintf(chrdev_state->buf_data, LUNIX_CHRDEV_BUFSZ, "%u\n", raw_data);
+    }
+
+    /* Update timestamp */
+    chrdev_state->buf_timestamp = current_timestamp;
+
+    return 0;
+}
+
+/*************************************
+ * Implementation of file operations *
+ *************************************/
+
+/* Open the device */
+static int lunix_chrdev_open(struct inode *inode, struct file *filp)
+{
+    struct lunix_chrdev_state_struct *chrdev_state;
+    unsigned int sensor, type;
+
+    if ((filp->f_flags & O_WRONLY) || (filp->f_flags & O_RDWR)) {
+        return -EPERM;
+    }
+
+    /* Parse minor number to identify sensor and measurement type */
+    sensor = iminor(inode) / 8;
+    type = iminor(inode) % 8;
+
+    chrdev_state = kzalloc(sizeof(*chrdev_state), GFP_KERNEL);
+    if (!chrdev_state) {
+        pr_err("Failed to allocate memory for chrdev_state\n");
+        return -ENOMEM;
+    }
+
+    /* Initialize the device state */
+    chrdev_state->sensor = &lunix_sensors[sensor];
+    chrdev_state->type = type;
+    chrdev_state->buf_lim = 0;
+    chrdev_state->buf_timestamp = 0;
+    mutex_init(&chrdev_state->lock);
+    init_waitqueue_head(&chrdev_state->read_queue);
+    atomic_set(&chrdev_state->raw_mode, 0);
+
+    /* Save the state */
+    filp->private_data = chrdev_state;
+
+    return 0;
+}
+
+/* Close the device */
+static int lunix_chrdev_release(struct inode *inode, struct file *filp)
+{
+    struct lunix_chrdev_state_struct *chrdev_state = filp->private_data;
+
+    kfree(chrdev_state);
+    return 0;
+}
+
+/* Read data from the device */
+ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t count, loff_t *f_pos)
+{
+    struct lunix_chrdev_state_struct *chrdev_state = filp->private_data;
+    ssize_t ret;
+
+    if (mutex_lock_interruptible(&chrdev_state->lock)) {
+        return -ERESTARTSYS;
+    }
+
+    while (lunix_chrdev_state_update(chrdev_state) == -EAGAIN) {
+        mutex_unlock(&chrdev_state->lock);
+
+        if (filp->f_flags & O_NONBLOCK) {
+            return -EAGAIN;
+        }
+
+        if (wait_event_interruptible(chrdev_state->read_queue, lunix_chrdev_state_needs_refresh(chrdev_state))) {
+            return -ERESTARTSYS;
+        }
+
+        if (mutex_lock_interruptible(&chrdev_state->lock)) {
+            return -ERESTARTSYS;
+        }
+    }
+
+    /* Copy data to user space */
+    ret = simple_read_from_buffer(usrbuf, count, f_pos, chrdev_state->buf_data, chrdev_state->buf_lim);
+
+    mutex_unlock(&chrdev_state->lock);
+    return ret;
+}
+
+/* File operations */
+static const struct file_operations lunix_chrdev_fops = {
+    .owner = THIS_MODULE,
+    .open = lunix_chrdev_open,
+    .release = lunix_chrdev_release,
+    .read = lunix_chrdev_read,
+    .llseek = no_llseek,
+};
+
+/* Initialization and cleanup */
+int lunix_chrdev_init(void)
+{
+    int ret;
+    dev_t dev_no = MKDEV(LUNIX_CHRDEV_MAJOR, 0);
+
+    cdev_init(&lunix_chrdev_cdev, &lunix_chrdev_fops);
+    lunix_chrdev_cdev.owner = THIS_MODULE;
+
+    ret = register_chrdev_region(dev_no, lunix_sensor_cnt * 8, "lunix");
+    if (ret < 0) {
+        pr_err("Failed to register chrdev region\n");
+        return ret;
+    }
+
+    ret = cdev_add(&lunix_chrdev_cdev, dev_no, lunix_sensor_cnt * 8);
+    if (ret < 0) {
+        unregister_chrdev_region(dev_no, lunix_sensor_cnt * 8);
+        pr_err("Failed to add chrdev\n");
+        return ret;
+    }
+
+    pr_info("Lunix chrdev initialized\n");
+    return 0;
+}
+
+void lunix_chrdev_destroy(void)
+{
+    dev_t dev_no = MKDEV(LUNIX_CHRDEV_MAJOR, 0);
+
+    cdev_del(&lunix_chrdev_cdev);
+    unregister_chrdev_region(dev_no, lunix_sensor_cnt * 8);
+
+    pr_info("Lunix chrdev destroyed\n");
+}
