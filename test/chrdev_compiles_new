@@ -50,9 +50,10 @@ static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *st
 	WARN_ON ( !(sensor = state->sensor));
 	if(sensor->msr_data[state->type]->last_update > state->buf_timestamp)
 	{
+		debug("I need refreshing\n");
 		return(1);//if last update happend later than the last return 1 
 	}	
-	
+	debug("Im good\n");
 	return 0; //else 0
 }
 
@@ -78,7 +79,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	spin_lock_irqsave(&sensor->lock, flags);
 	/*Update buf_data by loading the data of 1 sensor*/
 	raw_data = sensor->msr_data[state->type]->values[0];
-	time = ktime_get_real_seconds();
+	time = sensor->msr_data[state->type]->last_update;
 	spin_unlock_irqrestore(&sensor->lock,flags);
 	
 	/*
@@ -89,6 +90,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	if(lunix_chrdev_state_needs_refresh(state))
 	{
 		state->buf_timestamp = time;
+		debug("Aaaaah refreshing\n");
 		if(state->type == 0)
 		{
 			formated_data = lookup_voltage[raw_data];
@@ -107,6 +109,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	}
 	else
 	{
+		debug("Nothing to refresh\n");
 		return -EAGAIN;
 	}
 	debug("leaving\n");
@@ -121,7 +124,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 {
 	/* Declarations */
-	lunix_chrdev_init();
+	//lunix_chrdev_init();
 	struct lunix_chrdev_state_struct *state;
 	int ret;
 	unsigned int min_num, sensor_num;
@@ -167,7 +170,7 @@ out:
 static int lunix_chrdev_release(struct inode *inode, struct file *filp)
 {
 	kfree(filp->private_data);//private data points to each state so probably works
-	lunix_chrdev_destroy();	
+	//lunix_chrdev_destroy();	
 	return 0;
 }
 
@@ -191,7 +194,8 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 
 	if(down_interruptible(&state->lock))
 	{
-		return -EAGAIN;
+		ret = -EAGAIN;
+		goto out;
 	}
 	/*
 	 * If the cached character device state needs to be
@@ -205,17 +209,20 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 			/* The process needs to sleep */
 			if(wait_event_interruptible(sensor->wq, !lunix_chrdev_state_needs_refresh(state)))
 			{
-				return -EAGAIN;
-			}	
+				ret = -EAGAIN;
+				goto out;
+			}
+			debug("I'm awake and prettier\n");	
 			if(down_interruptible(&state->lock))
 			{
-				return -EAGAIN;
+				ret = -EAGAIN;
+				goto out;
 			}
 		}
 
 	}
 	
-	cnt = min(cnt,(unsigned int)(state->buf_lim - *f_pos));
+	cnt = min(cnt,(size_t)(state->buf_lim - *f_pos));
 	
 	/* End of file */
 	ret = cnt - *f_pos;
