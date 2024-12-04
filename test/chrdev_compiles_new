@@ -66,6 +66,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	unsigned long flags;
 	struct lunix_sensor_struct *sensor;
 	uint16_t raw_data;
+	uint32_t time;
 	long formated_data;
 	debug("leaving\n");
 	sensor = state->sensor;
@@ -77,7 +78,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	spin_lock_irqsave(&sensor->lock, flags);
 	/*Update buf_data by loading the data of 1 sensor*/
 	raw_data = sensor->msr_data[state->type]->values[0];
-	state->buf_timestamp = ktime_get_real_seconds();
+	time = ktime_get_real_seconds();
 	spin_unlock_irqrestore(&sensor->lock,flags);
 	
 	/*
@@ -87,6 +88,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	
 	if(lunix_chrdev_state_needs_refresh(state))
 	{
+		state->buf_timestamp = time;
 		if(state->type == 0)
 		{
 			formated_data = lookup_voltage[raw_data];
@@ -201,7 +203,7 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 			up(&state->lock); //Since u sleep others take your stuff
 			debug("Time for my beauty sleep");		
 			/* The process needs to sleep */
-			if(wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state)))
+			if(wait_event_interruptible(sensor->wq, !lunix_chrdev_state_needs_refresh(state)))
 			{
 				return -EAGAIN;
 			}	
