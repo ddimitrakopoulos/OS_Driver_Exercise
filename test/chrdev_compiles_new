@@ -225,7 +225,7 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	cnt = min(cnt,(size_t)(state->buf_lim - *f_pos));
 	
 	/* End of file */
-	ret = cnt - *f_pos;
+	ret = cnt; // - *f_pos;
 
 	if(copy_to_user(usrbuf,state->buf_data + *f_pos,cnt))
 	{
@@ -250,7 +250,7 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	 */
 out:
 	up(&state->lock);
-	wake_up_interruptible(&sensor->wq);
+	//wake_up_interruptible(&sensor->wq);
 	debug("%d out with bytes %li\n", state->type, (long)cnt);
 	return ret;
 }
