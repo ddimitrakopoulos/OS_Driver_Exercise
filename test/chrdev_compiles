@@ -132,7 +132,8 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	}
 
 	state = kmalloc(sizeof(state), GFP_KERNEL);
-	if (!state) 
+	//if (!state) 
+	if(!(sizeof(*state)))
 	{
     		debug("Memory allocation failed\n");
     		ret= -ENOMEM;
