@@ -115,7 +115,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
  * Implementation of file operations
  * for the Lunix character device
  *************************************/
-
+/*
 static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 {
 	/* Declarations */
@@ -131,7 +131,7 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
-	state = kmalloc(sizeof(*state), GFP_KERNEL);
+	state = kmalloc(sizeof(state), GFP_KERNEL);
 	if (!state) 
 	{
     		debug("Memory allocation failed\n");
@@ -160,7 +160,57 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 out:
 	debug("leaving, with ret = %d\n", ret);
 	return ret;
+}*/
+
+static int lunix_chrdev_open(struct inode *inode, struct file *filp)
+{
+    struct lunix_chrdev_state_struct *state;
+    int ret;
+    unsigned int min_num, sensor_num;
+
+    debug("entering\n");
+
+    /* Handle non-seekable file */
+    if ((ret = nonseekable_open(inode, filp)) < 0) {
+        goto out;
+    }
+
+    /* Allocate memory for the private state structure */
+    state = kmalloc(sizeof(*state), GFP_KERNEL);
+    if (!state) {
+        debug("Memory allocation failed\n");
+        ret = -ENOMEM;
+        goto out;
+    }
+
+    /* Decode the minor number */
+    min_num = iminor(inode);
+    sensor_num = min_num >> 3; // Extract sensor number
+    if (sensor_num >= lunix_sensor_cnt || (min_num & 0x07) >= 8) {
+        debug("Invalid minor number: %u\n", min_num);
+        kfree(state);
+        ret = -EINVAL;
+        goto out;
+    }
+
+    state->sensor = &lunix_sensors[sensor_num];
+    state->type = min_num & 0x07;
+
+    /* Initialize state variables */
+    state->buf_timestamp = 0;
+    state->buf_lim = 0;
+    memset(state->buf_data, 0, sizeof(state->buf_data));
+    sema_init(&state->lock, 1);
+
+    /* Associate state with file */
+    filp->private_data = state;
+    ret = 0;
+
+out:
+    debug("leaving, with ret = %d\n", ret);
+    return ret;
 }
+
 
 static int lunix_chrdev_release(struct inode *inode, struct file *filp)
 {
