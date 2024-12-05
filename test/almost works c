@@ -89,6 +89,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	
 	if(lunix_chrdev_state_needs_refresh(state))
 	{
+		state -> buf_timestamp = time;
 		switch (state->type) {
 			case BATT:
 				measurement = lookup_voltage[raw_data];
