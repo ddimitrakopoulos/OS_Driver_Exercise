@@ -269,6 +269,7 @@ static struct file_operations lunix_chrdev_fops =
 	.mmap           = lunix_chrdev_mmap
 };
 
+//this function is called when calling the command insmod ~/path/to/lunix.ko
 int lunix_chrdev_init(void)
 {
 	/*
@@ -309,14 +310,15 @@ out:
 	return ret;
 }
 
+//this function is called when running the command rmmod lunix
 void lunix_chrdev_destroy(void)
 {
 	dev_t dev_no;
 	unsigned int lunix_minor_cnt = lunix_sensor_cnt << 3;
 
-	debug("entering\n");
+	debug("entering destroy\n");
 	dev_no = MKDEV(LUNIX_CHRDEV_MAJOR, 0);
 	cdev_del(&lunix_chrdev_cdev);
 	unregister_chrdev_region(dev_no, lunix_minor_cnt);
-	debug("leaving\n");
+	debug("leaving destroy\n");
 }
