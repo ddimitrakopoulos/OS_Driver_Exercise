@@ -38,12 +38,8 @@ struct cdev lunix_chrdev_cdev;
  * Just a quick [unlocked] check to see if the cached
  * chrdev state needs to be updated from sensor measurements.
  */
-/*
- * Declare a prototype so we can define the "unused" attribute and keep
- * the compiler happy. This function is not yet used, because this helpcode
- * is a stub.
- */
-//static int __attribute__((unused)) lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *);
+
+//is called to check whether a lunix sensor needs to be updated (returns 1) or not (return 0)
 static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state)
 {
     // struct sensor to copy the sensor of the state argument
