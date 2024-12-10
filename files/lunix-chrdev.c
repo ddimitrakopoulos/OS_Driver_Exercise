@@ -48,7 +48,7 @@ static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *st
 {
 	struct lunix_sensor_struct *sensor;
 	WARN_ON ( !(sensor = state->sensor));
-	if(sensor->msr_data[state->type]->last_update > state->buf_timestamp)
+	if(sensor->msr_data[state->type]->last_update > state->buf_timestamp)//Check if new data in buffers
 	{
 		debug("I need refreshing\n");
 		return(1);//if last update happend later than the last return 1 
@@ -76,10 +76,10 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	 * spinlock for as little as possible.
 	 */
 
-	spin_lock_irqsave(&sensor->lock, flags);
+	spin_lock_irqsave(&sensor->lock, flags);//In flags the flag goes register, no hard interrupts
 	/*Update buf_data by loading the data of 1 sensor*/
-	raw_data = sensor->msr_data[state->type]->values[0];
-	time = sensor->msr_data[state->type]->last_update;
+	raw_data = sensor->msr_data[state->type]->values[0]; //save data and last update time
+	time = sensor->msr_data[state->type]->last_update; 
 	spin_unlock_irqrestore(&sensor->lock,flags);
 	
 	/*
@@ -87,9 +87,9 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	 * holding only the private state semaphore
 	 */
 	
-	if(lunix_chrdev_state_needs_refresh(state))
+	if(lunix_chrdev_state_needs_refresh(state)) //if data have been refreshed before last update
 	{
-		state -> buf_timestamp = time;
+		state -> buf_timestamp = time; //buf_timestamp is time of last update
 		switch (state->type) {
 			case BATT:
 				measurement = lookup_voltage[raw_data];
@@ -104,7 +104,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 				return -EINVAL;
 		}
 
-    	state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ, " %ld.%03ld\n", measurement / 1000, measurement % 1000);
+    		state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ, " %ld.%03ld\n", measurement / 1000, measurement % 1000);
 	}
 	else
 	{
@@ -147,9 +147,9 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	 * the minor number of the device node [/dev/sensor<NO>-<TYPE>]
 	 */
 	min_num = iminor(inode);
-	sensor_num = min_num >> 3;
-	state->sensor = &lunix_sensors[sensor_num]; 
-	min_num = min_num & 0x07;
+	sensor_num = min_num >> 3; //take sensor num based on inode
+	state->sensor = &lunix_sensors[sensor_num]; //Sensor in state points to sensor state struct
+	min_num = min_num & 0x07; //keep last 3 bits to find the type
 	state->type = min_num;	
 	
 	state->buf_timestamp = 0;
@@ -159,7 +159,7 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	sema_init(&state->lock,1);
 	
 	/* Allocate a new Lunix character device private state structure */
-	filp->private_data = state;
+	filp->private_data = state; //connect fd to struct
 	ret = 0;
 out:
 	debug("leaving, with ret = %d\n", ret);
@@ -169,7 +169,6 @@ out:
 static int lunix_chrdev_release(struct inode *inode, struct file *filp)
 {
 	kfree(filp->private_data);//private data points to each state so probably works
-	//lunix_chrdev_destroy();	
 	return 0;
 }
 
