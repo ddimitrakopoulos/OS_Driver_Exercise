@@ -43,7 +43,7 @@ struct cdev lunix_chrdev_cdev;
  * the compiler happy. This function is not yet used, because this helpcode
  * is a stub.
  */
-static int __attribute__((unused)) lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *);
+//static int __attribute__((unused)) lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *);
 static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state)
 {
 	struct lunix_sensor_struct *sensor;
@@ -65,11 +65,10 @@ static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *st
 static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 {
 	unsigned long flags;
-	struct lunix_sensor_struct __attribute__((unused)) *sensor;
-	WARN_ON ( !sensor);
+	struct lunix_sensor_struct *sensor;
 	uint16_t raw_data;
 	uint32_t time;
-	long formated_data;
+	long measurement;
 	debug("leaving\n");
 	sensor = state->sensor;
 	/*
@@ -90,23 +89,22 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	
 	if(lunix_chrdev_state_needs_refresh(state))
 	{
-		state->buf_timestamp = time;
-		debug("Aaaaah refreshing\n");
-		if(state->type == 0)
-		{
-			formated_data = lookup_voltage[raw_data];
-			state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ,"%.3ld",formated_data);
+		state -> buf_timestamp = time;
+		switch (state->type) {
+			case BATT:
+				measurement = lookup_voltage[raw_data];
+				break;
+			case TEMP:
+				measurement = lookup_temperature[raw_data];
+				break;
+			case LIGHT:
+				measurement = lookup_light[raw_data];
+				break;
+			default:
+				return -EINVAL;
 		}
-		if(state->type == 1)
-		{
-			formated_data = lookup_temperature[raw_data];
-			state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ,"%.3ld",formated_data);
-		}
-		if(state->type == 2)
-		{
-			formated_data = lookup_light[raw_data];
-			state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ,"%.3ld",formated_data);
-		}
+
+    	state->buf_lim = snprintf(state->buf_data, LUNIX_CHRDEV_BUFSZ, " %ld.%03ld\n", measurement / 1000, measurement % 1000);
 	}
 	else
 	{
@@ -137,7 +135,7 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
-	state = kmalloc(sizeof(state), GFP_KERNEL);
+	state = kmalloc(sizeof(*state), GFP_KERNEL);
 	if (!state) 
 	{
     		debug("Memory allocation failed\n");
@@ -156,7 +154,7 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	
 	state->buf_timestamp = 0;
 	state->buf_lim = 0;
-	memset(&state->buf_data,0,sizeof(state->buf_data));
+	memset(&state->buf_data,0,20);
 
 	sema_init(&state->lock,1);
 	
@@ -195,8 +193,8 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 
 	if(down_interruptible(&state->lock))
 	{
-		return -EAGAIN;
-		//goto out;
+		ret = -EAGAIN;
+		goto out;
 	}
 	/*
 	 * If the cached character device state needs to be
@@ -205,42 +203,44 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	 */
 	if(*f_pos == 0) {
 		while (lunix_chrdev_state_update(state) == -EAGAIN) {
-			up(&state->lock); //Since u sleep others take your stuff
-			debug("Time for my beauty sleep");		
-			/* The process needs to sleep */
-			if(wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state)))
-			{
-				ret = -EAGAIN;
-				goto out;
-			}
-			debug("I'm awake and prettier\n");	
-			if(down_interruptible(&state->lock))
-			{
-				ret = -EAGAIN;
-				goto out;
-			}
-		}
+            /* Release lock while sleeping */
+            up(&state->lock);
+
+            /* Handle non-blocking mode */
+            if (filp->f_flags & O_NONBLOCK)
+                return -EAGAIN;
+
+            /* Wait for sensor data to become available */
+            if (wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state)))
+                return -ERESTARTSYS;
+
+            /* Reacquire the lock */
+            if (down_interruptible(&state->lock))
+                return -ERESTARTSYS;
+        }
 
 	}
 	
 	cnt = min(cnt,(size_t)(state->buf_lim - *f_pos));
 	
 	/* End of file */
-	ret = cnt; //- *f_pos;
+	ret = cnt; // - *f_pos;
 
-	if(copy_to_user(usrbuf,state->buf_data + *f_pos, cnt))
+	if(copy_to_user(usrbuf,state->buf_data + *f_pos,cnt))
 	{
 		ret = -EFAULT;
 		goto out;
 	}
-	*f_pos += cnt;
 	/* Auto-rewind on EOF mode? */
-	if(*f_pos == state->buf_lim)
+	if(cnt == state->buf_lim)
 	{
 		*f_pos = 0;
 		goto out;
-	}   
-	
+	}
+	else
+	{       	
+		*f_pos = *f_pos + cnt;
+	}
 	/*
 	 * The next two lines  are just meant to suppress a compiler warning
 	 * for the "unused" out: label, and for the uninitialized "ret" value.
