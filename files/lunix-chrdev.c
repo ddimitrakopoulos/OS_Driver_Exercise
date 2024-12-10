@@ -40,6 +40,7 @@ struct cdev lunix_chrdev_cdev;
  */
 
 //is called to check whether a lunix sensor needs to be updated (returns 1) or not (return 0)
+//is only called inside lunix_chrdev_state_update (?)
 static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state)
 {
     // struct sensor to copy the sensor of the state argument
@@ -166,9 +167,10 @@ out:
 	return ret;
 }
 
+//is called when a user space application (like cat) uses the close syscall 
 static int lunix_chrdev_release(struct inode *inode, struct file *filp)
 {
-	kfree(filp->private_data);//private data points to each state so probably works
+	kfree(filp->private_data); //free the memory of the pre-opened file 
 	return 0;
 }
 
