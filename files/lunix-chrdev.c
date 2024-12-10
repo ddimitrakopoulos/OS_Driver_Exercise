@@ -259,6 +259,7 @@ static int lunix_chrdev_mmap(struct file *filp, struct vm_area_struct *vma)
 	return -EINVAL;
 }
 
+//tells the kernel how to handle system calls (ex. open calls lunix_chrdev_open)
 static struct file_operations lunix_chrdev_fops = 
 {
 	.owner          = THIS_MODULE,
@@ -277,7 +278,6 @@ int lunix_chrdev_init(void)
 	 * a range of minor numbers (number of sensors * 8 measurements / sensor)
 	 * beginning with LINUX_CHRDEV_MAJOR:0
 	 */ 
-	//struct lunix_sensor_struct *s;
 	int ret;
 	dev_t dev_no;
 	unsigned int lunix_minor_cnt = lunix_sensor_cnt << 3;
