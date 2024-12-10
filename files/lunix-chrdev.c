@@ -46,15 +46,18 @@ struct cdev lunix_chrdev_cdev;
 //static int __attribute__((unused)) lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *);
 static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *state)
 {
+    // struct sensor to copy the sensor of the state argument
 	struct lunix_sensor_struct *sensor;
+    // macro that is used for debugging and throws a warning if the state->sensor is null
 	WARN_ON ( !(sensor = state->sensor));
-	if(sensor->msr_data[state->type]->last_update > state->buf_timestamp)//Check if new data in buffers
+    // if the last update for the specific sensor was more recently than the last timestamp we have saved we need to update the sensor
+	if(sensor->msr_data[state->type]->last_update > state->buf_timestamp)
 	{
 		debug("I need refreshing\n");
-		return(1);//if last update happend later than the last return 1 
+		return(1);
 	}	
 	debug("Im good\n");
-	return 0; //else 0
+	return 0; 
 }
 
 /*
@@ -64,7 +67,7 @@ static int lunix_chrdev_state_needs_refresh(struct lunix_chrdev_state_struct *st
  */
 static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 {
-	unsigned long flags;
+	unsigned long flags; //this is used to save the state when calling spin lock/unlock irq save 
 	struct lunix_sensor_struct *sensor;
 	uint16_t raw_data;
 	uint32_t time;
@@ -87,7 +90,8 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	 * holding only the private state semaphore
 	 */
 	
-	if(lunix_chrdev_state_needs_refresh(state)) //if data have been refreshed before last update
+	if(lunix_chrdev_state_needs_refresh(state)) //if data have been refreshed before last update then update timestamp, transform the value into the desired format
+    //and write into the buffer so we can read it when needed 
 	{
 		state -> buf_timestamp = time; //buf_timestamp is time of last update
 		switch (state->type) {
