@@ -205,12 +205,9 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
             /* Release lock while sleeping */
             up(&state->lock);
 
-            /* Handle non-blocking mode */
-            if (filp->f_flags & O_NONBLOCK)
-                return -EAGAIN;
-
+            
             /* Wait for sensor data to become available */
-            if (wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state)))
+            if (wait_event_interruptible(sensor->wq, lunix_chrdev_state_needs_refresh(state))) //Non-Blocking op
                 return -ERESTARTSYS;
 
             /* Reacquire the lock */
