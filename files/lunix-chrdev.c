@@ -69,13 +69,14 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 	uint16_t raw_data;
 	uint32_t time;
 	long measurement;
-	debug("leaving\n");
+	debug("entering update\n");
 	sensor = state->sensor;
 	/*
 	 * Grab the raw data quickly, hold the
 	 * spinlock for as little as possible.
 	 */
 
+    //retrieve raw data and update time
 	spin_lock_irqsave(&sensor->lock, flags);//In flags the flag goes register, no hard interrupts
 	/*Update buf_data by loading the data of 1 sensor*/
 	raw_data = sensor->msr_data[state->type]->values[0]; //save data and last update time
@@ -112,7 +113,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
 		debug("Nothing to refresh\n");
 		return -EAGAIN;
 	}
-	debug("leaving\n");
+	debug("leaving update\n");
 	return 0;
 }
 
@@ -121,6 +122,7 @@ static int lunix_chrdev_state_update(struct lunix_chrdev_state_struct *state)
  * for the Lunix character device
  *************************************/
 
+//is called when using the open syscall from user space
 static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 {
 	/* Declarations */
@@ -129,8 +131,9 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	int ret;
 	unsigned int min_num, sensor_num;
 
-	debug("entering\n");
+	debug("entering open\n");
 	ret = -ENODEV;
+    //if open fails or inode/file distriptor are return
 	if ((ret = nonseekable_open(inode, filp)) < 0)
 	{
 		goto out;
@@ -153,17 +156,16 @@ static int lunix_chrdev_open(struct inode *inode, struct file *filp)
 	min_num = min_num & 0x07; //keep last 3 bits to find the type
 	state->type = min_num;	
 	
-	state->buf_timestamp = 0;
-	state->buf_lim = 0;
-	memset(&state->buf_data,0,20);
-
-	sema_init(&state->lock,1);
-	
+    state->buf_timestamp = 0;    // Indicates no data cached yet
+    state->buf_lim = 0;         // Buffer size starts at zero
+    memset(&state->buf_data, 0, 20); // Clears the data buffer
+    sema_init(&state->lock, 1); // Initializes the semaphore to 1 (unlocked state)
+        
 	/* Allocate a new Lunix character device private state structure */
 	filp->private_data = state; //connect fd to struct
 	ret = 0;
 out:
-	debug("leaving, with ret = %d\n", ret);
+	debug("leaving open, with ret = %d\n", ret);
 	return ret;
 }
 
@@ -185,13 +187,14 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	
 	struct lunix_sensor_struct *sensor;
 	struct lunix_chrdev_state_struct *state;
-
+    debug("entering read\n");
 	state = filp->private_data;
 	WARN_ON(!state);
 
 	sensor = state->sensor;
 	WARN_ON(!sensor);
 
+    //acquire semaphore and if interrupted try again
 	if(down_interruptible(&state->lock))
 	{
 		ret = -EAGAIN;
@@ -239,16 +242,11 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	{       	
 		*f_pos = *f_pos + cnt;
 	}
-	/*
-	 * The next two lines  are just meant to suppress a compiler warning
-	 * for the "unused" out: label, and for the uninitialized "ret" value.
-	 * It's true, this helpcode is a stub, and doesn't use them properly.
-	 * Remove them when you've started working on this code.
-	 */
+
 out:
 	up(&state->lock);
 	//wake_up_interruptible(&sensor->wq);
-	debug("%d out with bytes %li\n", state->type, (long)cnt);
+	debug("%d out with bytes %li in read\n", state->type, (long)cnt);
 	return ret;
 }
 
@@ -315,8 +313,10 @@ void lunix_chrdev_destroy(void)
 	unsigned int lunix_minor_cnt = lunix_sensor_cnt << 3;
 
 	debug("entering destroy\n");
-	dev_no = MKDEV(LUNIX_CHRDEV_MAJOR, 0);
-	cdev_del(&lunix_chrdev_cdev);
-	unregister_chrdev_region(dev_no, lunix_minor_cnt);
+	dev_no = MKDEV(LUNIX_CHRDEV_MAJOR, 0); //initialize device
+	cdev_del(&lunix_chrdev_cdev); //removes the character device
+	unregister_chrdev_region(dev_no, lunix_minor_cnt); // Frees the 
+    //region of device numbers allocated to the driver during initialization (lunix_chrdev_init) 
+    //prevents the system from reserving these device numbers for this driver, making them available for other drivers.
 	debug("leaving destroy\n");
 }
