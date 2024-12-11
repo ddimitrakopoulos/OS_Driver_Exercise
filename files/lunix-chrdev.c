@@ -187,7 +187,7 @@ static ssize_t lunix_chrdev_read(struct file *filp, char __user *usrbuf, size_t 
 	
 	struct lunix_sensor_struct *sensor;
 	struct lunix_chrdev_state_struct *state;
-    debug("entering read\n");
+   	debug("entering read\n");
 	state = filp->private_data;
 	WARN_ON(!state);
 
