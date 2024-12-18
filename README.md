@@ -1,19 +1,19 @@
 A project for an os class assigment by Nikolaos Roumpies && Dimitrios Dimitrakopoulos
 
-task (a) //take infromation from the devices ---> not started
+task (a) //take infromation from the devices ---> finished
 
-task (b) //info into usb ---> not started
+task (b) //info into usb ---> finished
 
-task (c) //linux filter ---> not started
+task (c) //linux filter ---> finished
 
-task (d) ---> not started
+task (d) ---> finished
 
-task (e) ---> not started
+task (e) ---> finished
 
-task (f) ---> not started
+task (f) ---> finished
 
-task (g1) ---> not started
+task (g1) ---> finished
 
-task (g2) ---> not started
+task (g2) ---> finished
 
-task (h) ---> not started
+task (h) ---> finished
